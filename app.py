@@ -890,6 +890,91 @@ def eliminar_curso(id):
     }, 200
     
     
+    # CONSULTA COMPLETA DE LA HOJA DE VIDA
+
+@app.route("/api/hojasvida/<int:id>/completa", methods=["GET"])
+def consultar_hoja_vida_completa(id):
+
+    conec = conectar_bd()
+    cursor = conec.cursor(dictionary=True)
+
+    # Buscar la hoja de vida
+    cursor.execute(
+        "SELECT * FROM hojas_vida WHERE id = %s",
+        (id,)
+    )
+
+    hoja_vida = cursor.fetchone()
+
+    if hoja_vida is None:
+        cursor.close()
+        conec.close()
+
+        return {
+            "mensaje": "Hoja de vida no encontrada"
+        }, 404
+
+    # Consultar estudios
+    cursor.execute(
+        """
+        SELECT id, nivel, institucion, titulo, anio_graduacion
+        FROM estudios
+        WHERE hoja_vida_id = %s
+        """,
+        (id,)
+    )
+
+    estudios = cursor.fetchall()
+
+    # Consultar cursos
+    cursor.execute(
+        """
+        SELECT id, nombre
+        FROM cursos
+        WHERE hoja_vida_id = %s
+        """,
+        (id,)
+    )
+
+    cursos = cursor.fetchall()
+
+    # Consultar experiencias
+    cursor.execute(
+        """
+        SELECT id, empresa, cargo, tiempo, funciones
+        FROM experiencias
+        WHERE hoja_vida_id = %s
+        """,
+        (id,)
+    )
+
+    experiencias = cursor.fetchall()
+
+    # Consultar habilidades de cada experiencia
+    for experiencia in experiencias:
+
+        cursor.execute(
+            """
+            SELECT id, nombre
+            FROM habilidades
+            WHERE experiencia_id = %s
+            """,
+            (experiencia["id"],)
+        )
+
+        habilidades = cursor.fetchall()
+
+        experiencia["habilidades"] = habilidades
+
+    cursor.close()
+    conec.close()
+
+    return {
+        "hoja_vida": hoja_vida,
+        "estudios": estudios,
+        "cursos": cursos,
+        "experiencias": experiencias
+    }, 200
 
 
 
