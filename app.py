@@ -343,7 +343,7 @@ def consultar_estudio(id):
 @app.route("/api/actualizarestudios/<int:id>", methods=["PUT"])
 def actualizar_estudio(id):
 
-    datos = request.json()
+    datos = request.json
     conec = conectar_bd()
     cursor = conec.cursor(buffered=True)
 
@@ -483,7 +483,7 @@ def registrar_experiencia(hoja_vida_id):
 @app.route("/api/actualizarexperiencia/<int:id>", methods=["PUT"])
 def actualizar_experiencia(id):
 
-    datos = request.json()
+    datos = request.json
     conec = conectar_bd()
     cursor = conec.cursor(buffered=True)
 
@@ -597,6 +597,7 @@ def consultar_habilidades(experiencia_id):
 
 
 # Registrar una nueva habilidad
+
 @app.route("/api/experiencias/<int:experiencia_id>/habilidades", methods=["POST"])
 def registrar_habilidad(experiencia_id):
 
@@ -636,7 +637,7 @@ def registrar_habilidad(experiencia_id):
 @app.route("/api/actualizarhabilidad/<int:id>", methods=["PUT"])
 def actualizar_habilidad(id):
 
-    datos = request.json()
+    datos = request.json
     conec = conectar_bd()
     cursor = conec.cursor(buffered=True)
 
@@ -811,7 +812,7 @@ def consultar_curso(id):
 @app.route("/api/actualizarcurso/<int:id>", methods=["PUT"])
 def actualizar_curso(id):
 
-    datos = request.json()
+    datos = request.json
     conec = conectar_bd()
     cursor = conec.cursor(buffered=True)
 
