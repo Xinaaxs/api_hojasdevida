@@ -1,10 +1,40 @@
-from flask import Flask, request
+import os
+from flask import Flask, request,jsonify
 from flask_cors import CORS
-from database import conectar_bd
+from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import (
+    JWTManager,
+    create_access_token,
+    jwt_required,
+    get_jwt_identity,
+    get_jwt
+)
+
+from database import conectar_bd
+from functools import wraps 
+load_dotenv()
 
 app = Flask(__name__)
+app.config["JWT_SECRET_KEY"] = os.getenv("JWT_SECRET_KEY")
+if not app.config["JWT_SECRET_KEY"]:
+    raise RuntimeError("NO SE ENCONTRO LA LLAVE JWT")
+jwt = JWTManager(app)
 CORS(app)
+
+def rol_requerido(rol):
+    def decorador(funcion):
+        @wraps(funcion)
+        @jwt_required()
+        def wrapper(*args,**kwargs):
+            claims = get_jwt()
+
+            if claims.get("rol") != rol:
+                return jsonify({"mensaje": "No tiene permiso para acceder"}), 403
+            return funcion(*args,**kwargs)
+        return wrapper
+    return decorador
+
 
 
 @app.route("/probar")
@@ -104,71 +134,68 @@ def registro_usuario():
 #registrado y si no se cumple que no dejen registrar y contraseña debe estar encriptadas 
 
 
-@app.route("/api/login",methods=["POST"])
+@app.route("/api/login", methods=["POST"])
 def login():
     datos = request.get_json()
 
-    # Verificar campos vacíos
-    if not datos or not datos.get("correo") or not datos.get("password"):
-        return {
-            "mensaje": "El correo y la contraseña son obligatorios"
-        }, 400
+    if not datos:
+        return jsonify({"mensaje": "Datos incompletos"}), 400
 
-    correo = datos["correo"].strip().lower()
-    password = datos["password"]
+    correo = datos.get("correo", "").strip().lower()
+    password = datos.get("password", "")
 
-    if not correo or not password.strip():
-        return {
-            "mensaje": "No se permiten campos vacíos"
-        }, 400
+    if not correo or not password:
+        return jsonify({"mensaje": "Ingrese correo y contraseña"}), 400
 
-    conec = conectar_bd()
-    cursor = conec.cursor(dictionary=True)
+    conexion = conectar_bd()
+    cursor = conexion.cursor(dictionary=True)
 
-    # Buscar usuario por correo
-    sql = """
-        SELECT * FROM usuarios
-        WHERE correo = %s
-    """
+    try:
+        # Buscar usuario por correo
+        sql = """
+            SELECT id, nombre, correo, password, rol, estado
+            FROM usuarios
+            WHERE correo = %s
+        """
 
-    cursor.execute(sql, (correo,))
-    usuario = cursor.fetchone()
+        cursor.execute(sql, (correo,))
+        usuario = cursor.fetchone()
 
-    cursor.close()
-    conec.close()
+        # Verificar si existe
+        if not usuario:
+            return jsonify({"mensaje": "Correo o contraseña incorrectos"}), 401
 
-    # Verificar si existe
-    if usuario is None:
-        return {
-            "mensaje": "Correo o contraseña incorrectos"
-        }, 401
+        # Verificar estado de la cuenta
+        if not usuario["estado"]:
+            return jsonify({"mensaje": "La cuenta está desactivada"}), 403
 
-    # Verificar estado
-    if usuario["estado"] != 1:
-        return {
-            "mensaje": "El usuario está inactivo"
-        }, 403
+        # Verificar contraseña cifrada
+        if not check_password_hash(usuario["password"], password):
+            return jsonify({"mensaje": "Correo o contraseña incorrectos"}), 401
 
-    # Verificar contraseña
-    if not check_password_hash(usuario["password"], password):
-        return {
-            "mensaje": "Correo o contraseña incorrectos"
-        }, 401
+        # Generar el token
+        token = create_access_token(
+            identity=str(usuario["id"]),
+            additional_claims={"rol": usuario["rol"]}
+        )
+        #respuesta
+        return jsonify({"mensaje": "inicio de sesion correcto",
+                        "token":token,
+                        "usuario":{"id":usuario["id"],
+                        "nombre":usuario["nombre"],
+                        "correo":usuario["correo"],
+                        "rol":usuario["rol"]} }),200
 
-    return {
-        "mensaje": "Inicio de sesión exitoso",
-        "usuario": {
-            "id": usuario["id"],
-            "nombre": usuario["nombre"],
-            "correo": usuario["correo"],
-            "rol": usuario["rol"]
-        }
-    }, 200
-    pass
+        
+
+    finally:
+        cursor.close()
+        conexion.close()
 
 
 #Actualizar hoja de vida por medio del id
 @app.route("/api/actualizarhv/<int:id>", methods=["PUT"])
+@jwt_required()
 def actualizarhv(id):
 
     # Recibir los datos enviados
@@ -245,6 +272,7 @@ def actualizarhv(id):
 
 # Eliminar hoja de vida por id
 @app.route("/api/eliminarhv/<int:id>", methods=["DELETE"])
+@jwt_required()
 def eliminar_hv(id):
     conec = conectar_bd()
     cursor = conec.cursor()
@@ -271,6 +299,7 @@ def eliminar_hv(id):
 
 #Consultar hoja de vida por id
 @app.route("/api/consultahv/<int:id>", methods=["GET"])
+@jwt_required()
 def obtener_hvida(id):
     conec = conectar_bd()
     cursor = conec.cursor(dictionary=True)
@@ -294,7 +323,9 @@ def obtener_hvida(id):
 
 
 @app.route("/api/registrohv", methods=["POST"])
+@jwt_required()
 def registrar_hojavida():
+    
 
     conec = conectar_bd()
     cursor = conec.cursor()
@@ -379,6 +410,7 @@ def obtener_hojasvidaid(id):
 
 # LISTAR TODAS LAS HOJAS DE VIDA
 @app.route("/api/hojas-vida")
+@rol_requerido("reclutador")
 def obtener_hojasvida():
 
     conec = conectar_bd()
@@ -1127,13 +1159,6 @@ def consultar_hoja_vida_completa(id):
         "cursos": cursos,
         "experiencias": experiencias
     }, 200
-
-
-
-
-
-
-
 
 
 
