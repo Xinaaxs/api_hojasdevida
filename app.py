@@ -1,6 +1,7 @@
 from flask import Flask, request
 from flask_cors import CORS
 from database import conectar_bd
+from werkzeug.security import generate_password_hash, check_password_hash
 
 app = Flask(__name__)
 CORS(app)
@@ -16,6 +17,154 @@ def probar_data():
     return {
         "mensaje": "Conexion ok"
     }
+
+@app.route("/api/registro-usuario", methods=["POST"])
+def registro_usuario():
+
+    datos = request.get_json()
+
+    # Verificar campos vacíos
+    if not datos or not datos.get("nombre") or not datos.get("correo") or not datos.get("password"):
+        return {
+            "mensaje": "Todos los campos son obligatorios"
+        }, 400
+
+    nombre = datos["nombre"].strip()
+    correo = datos["correo"].strip().lower()
+    password = datos["password"]
+    rol = datos.get("rol", "aprendiz")
+
+    # Verificar campos vacíos
+    if not nombre or not correo or not password.strip():
+        return {
+            "mensaje": "No se permiten campos vacíos"
+        }, 400
+
+    # Validar longitud de contraseña
+    if len(password) < 8 or len(password) > 15:
+        return {
+            "mensaje": "La contraseña debe tener entre 8 y 15 caracteres"
+        }, 400
+
+    # Validar rol
+    if rol not in ["aprendiz", "reclutador"]:
+        return {
+            "mensaje": "El rol no es válido"
+        }, 400
+
+    conec = conectar_bd()
+    cursor = conec.cursor()
+
+    # Verificar si el correo ya existe
+    cursor.execute(
+        "SELECT id FROM usuarios WHERE correo = %s",
+        (correo,)
+    )
+
+    existe = cursor.fetchone()
+
+    if existe:
+        cursor.close()
+        conec.close()
+
+        return {
+            "mensaje": "El correo ya está registrado"
+        }, 400
+
+    # Encriptar contraseña
+    password_encriptada = generate_password_hash(password)
+
+    # Registrar usuario
+    sql = """
+        INSERT INTO usuarios (nombre, correo, password, rol)
+        VALUES (%s, %s, %s, %s)
+    """
+
+    cursor.execute(sql, (
+        nombre,
+        correo,
+        password_encriptada,
+        rol
+    ))
+
+    conec.commit()
+
+    id_usuario = cursor.lastrowid
+
+    cursor.close()
+    conec.close()
+
+    return {
+        "mensaje": "Usuario registrado correctamente",
+        "id": id_usuario
+    }, 201
+
+    pass
+#contraseña entre 8 y 15 carac sin campos vacios y correo electronico no puede estar 
+#registrado y si no se cumple que no dejen registrar y contraseña debe estar encriptadas 
+
+
+@app.route("/api/login",methods=["POST"])
+def login():
+    datos = request.get_json()
+
+    # Verificar campos vacíos
+    if not datos or not datos.get("correo") or not datos.get("password"):
+        return {
+            "mensaje": "El correo y la contraseña son obligatorios"
+        }, 400
+
+    correo = datos["correo"].strip().lower()
+    password = datos["password"]
+
+    if not correo or not password.strip():
+        return {
+            "mensaje": "No se permiten campos vacíos"
+        }, 400
+
+    conec = conectar_bd()
+    cursor = conec.cursor(dictionary=True)
+
+    # Buscar usuario por correo
+    sql = """
+        SELECT * FROM usuarios
+        WHERE correo = %s
+    """
+
+    cursor.execute(sql, (correo,))
+    usuario = cursor.fetchone()
+
+    cursor.close()
+    conec.close()
+
+    # Verificar si existe
+    if usuario is None:
+        return {
+            "mensaje": "Correo o contraseña incorrectos"
+        }, 401
+
+    # Verificar estado
+    if usuario["estado"] != 1:
+        return {
+            "mensaje": "El usuario está inactivo"
+        }, 403
+
+    # Verificar contraseña
+    if not check_password_hash(usuario["password"], password):
+        return {
+            "mensaje": "Correo o contraseña incorrectos"
+        }, 401
+
+    return {
+        "mensaje": "Inicio de sesión exitoso",
+        "usuario": {
+            "id": usuario["id"],
+            "nombre": usuario["nombre"],
+            "correo": usuario["correo"],
+            "rol": usuario["rol"]
+        }
+    }, 200
+    pass
 
 
 #Actualizar hoja de vida por medio del id
